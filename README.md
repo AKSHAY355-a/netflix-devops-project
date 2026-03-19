@@ -17,7 +17,7 @@
 
 ![Pipeline Status](https://img.shields.io/badge/Pipeline-Passing-brightgreen?style=flat-square)
 ![Quality Gate](https://img.shields.io/badge/Quality%20Gate-Passed-brightgreen?style=flat-square)
-![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
+![Visitors](https://api.visitorbadge.io/api/visitors?path=https%3A%2F%2Fgithub.com%2FAKSHAY355-a%2Fnetflix-devsecops-eks&label=VISITOR&labelColor=%232ccce4&countColor=%23263759&style=plastic)
 
 </div>
 
