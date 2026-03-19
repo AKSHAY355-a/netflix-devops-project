@@ -616,9 +616,6 @@ netflix-devsecops-eks/
 ├── Jenkinsfile              # CI/CD pipeline definition
 ├── Dockerfile               # Container image build instructions
 ├── deployment.yml           # Kubernetes deployment & service manifests
-├── package.json             # Node.js dependencies
-├── src/                     # Application source code
-├── public/                  # Static assets
 ├── screenshots/             # Pipeline & app screenshots
 └── README.md                # Project documentation (this file)
 ```
