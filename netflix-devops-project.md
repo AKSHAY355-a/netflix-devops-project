@@ -467,10 +467,10 @@ pipeline {
             echo 'Pipeline execution complete.'
         }
         success {
-            echo '✅ Pipeline succeeded! Application deployed to EKS.'
+            echo ' Pipeline succeeded! Application deployed to EKS.'
         }
         failure {
-            echo '❌ Pipeline failed. Check logs for details.'
+            echo ' Pipeline failed. Check logs for details.'
         }
     }
 }
