@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: netflix-deployment
+  namespace: default
   labels:
     app: netflix
 spec:
@@ -19,11 +20,19 @@ spec:
         image: akshay23007/netflix:latest
         ports:
         - containerPort: 80
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "250m"
+            memory: "256Mi"
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: netflix-service
+  namespace: default
 spec:
   selector:
     app: netflix

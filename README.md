@@ -155,7 +155,7 @@ Before getting started, ensure you have the following:
 | **AWS Account** | With IAM permissions for EC2, EKS, and IAM management |
 | **Docker Hub Account** | For pushing and pulling container images |
 | **GitHub Account** | To host and version control the project repository |
-| **TMDB API Key** | Free API key from [themoviedb.org](https://www.themoviedb.org) for movie data |
+| **TMDB API Key** | Free API key from [themoviedb.org](https://www.themoviedb.org) for movie data — **must be stored in Jenkins Credentials** (ID: `tmdb-api-key`, type: Secret text). **Never hardcode this in the Jenkinsfile or source code.** |
 
 ---
 
@@ -352,6 +352,7 @@ Navigate to `Manage Jenkins` → `Credentials` → `Global` → `Add Credentials
 | `docker` | Username with password | Docker Hub login credentials |
 | `aws-access` | Secret text | AWS Access Key ID |
 | `aws-secret` | Secret text | AWS Secret Access Key |
+| `tmdb-api-key` | Secret text | TMDB API key (get from [themoviedb.org](https://www.themoviedb.org)) — **never hardcode this** |
 
 **6.3 — Configure SonarQube Server**
 
@@ -389,6 +390,8 @@ pipeline {
     }
     environment {
         SCANNER_HOME = tool 'sonar-scanner'
+        DOCKERHUB_USER = 'akshay23007'
+        IMAGE_NAME = "${DOCKERHUB_USER}/netflix"
     }
 
     stages {
@@ -398,7 +401,9 @@ pipeline {
 
         stage('Checkout from Git') {
             steps {
-                git branch: 'main', url: 'YOUR_REPO_URL'
+                git branch: 'main',
+                    credentialsId: 'github-token',
+                    url: 'https://github.com/AKSHAY355-a/DevSecOps-Project.git'
             }
         }
 
@@ -415,7 +420,7 @@ pipeline {
         stage('Quality Gate') {
             steps {
                 script {
-                    waitForQualityGate abortPipeline: false, credentialsId: 'sonar-token'
+                    waitForQualityGate abortPipeline: true
                 }
             }
         }
@@ -432,31 +437,36 @@ pipeline {
             steps {
                 script {
                     withDockerRegistry(credentialsId: 'docker', url: 'https://index.docker.io/v1/') {
-                        sh 'docker build --build-arg TMDB_V3_API_KEY=YOUR_KEY -t netflix .'
-                        sh 'docker tag netflix YOUR_DOCKERHUB/netflix:latest'
-                        sh 'docker push YOUR_DOCKERHUB/netflix:latest'
+                        withCredentials([string(credentialsId: 'tmdb-api-key', variable: 'TMDB_KEY')]) {
+                            sh "docker build --build-arg TMDB_V3_API_KEY=${TMDB_KEY} -t netflix ."
+                            sh "docker tag netflix ${DOCKERHUB_USER}/netflix:${BUILD_NUMBER}"
+                            sh "docker push ${DOCKERHUB_USER}/netflix:${BUILD_NUMBER}"
+                        }
                     }
                 }
             }
         }
 
         stage('TRIVY Image Scan') {
-            steps { sh 'trivy image YOUR_DOCKERHUB/netflix:latest > trivyimage.txt' }
+            steps { sh "trivy image ${DOCKERHUB_USER}/netflix:${BUILD_NUMBER} > trivyimage.txt" }
         }
 
         stage('Deploy to EKS') {
             steps {
-                withCredentials([
-                    string(credentialsId: 'aws-access', variable: 'AWS_ACCESS_KEY_ID'),
-                    string(credentialsId: 'aws-secret', variable: 'AWS_SECRET_ACCESS_KEY')
-                ]) {
-                    sh '''
-                        export AWS_DEFAULT_REGION=ap-south-1
-                        aws eks update-kubeconfig --region ap-south-1 --name cloudnetflix
-                        kubectl apply -f deployment.yml
-                        kubectl get pods
-                        kubectl get svc
-                    '''
+                script {
+                    withCredentials([
+                        string(credentialsId: 'aws-access', variable: 'AWS_ACCESS_KEY_ID'),
+                        string(credentialsId: 'aws-secret', variable: 'AWS_SECRET_ACCESS_KEY')
+                    ]) {
+                        sh """
+                            export AWS_DEFAULT_REGION=ap-south-1
+                            aws eks update-kubeconfig --region ap-south-1 --name cloudnetflix
+                            sed -i 's|akshay23007/netflix:latest|akshay23007/netflix:${BUILD_NUMBER}|g' deployment.yml
+                            kubectl apply -f deployment.yml
+                            kubectl get pods
+                            kubectl get svc
+                        """
+                    }
                 }
             }
         }
@@ -467,10 +477,15 @@ pipeline {
             echo 'Pipeline execution complete.'
         }
         success {
-            echo ' Pipeline succeeded! Application deployed to EKS.'
+            echo 'Pipeline succeeded! Application deployed to EKS.'
         }
         failure {
-            echo ' Pipeline failed. Check logs for details.'
+            echo 'Pipeline failed. Check logs for details.'
+            emailext(
+                subject: "FAILED: Pipeline '${env.JOB_NAME}' [${env.BUILD_NUMBER}]",
+                body: "Build failed. Check console output at: ${env.BUILD_URL}",
+                to: 'your-email@gmail.com'
+            )
         }
     }
 }
@@ -481,11 +496,11 @@ pipeline {
 ### `deployment.yml`
 
 ```yaml
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: netflix-deployment
+  namespace: default
   labels:
     app: netflix
 spec:
@@ -499,31 +514,31 @@ spec:
         app: netflix
     spec:
       containers:
-        - name: netflix
-          image: YOUR_DOCKERHUB/netflix:latest
-          ports:
-            - containerPort: 80
-          resources:
-            requests:
-              cpu: "100m"
-              memory: "128Mi"
-            limits:
-              cpu: "250m"
-              memory: "256Mi"
-
+      - name: netflix
+        image: akshay23007/netflix:latest
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "250m"
+            memory: "256Mi"
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: netflix-service
+  namespace: default
 spec:
   selector:
     app: netflix
   type: LoadBalancer
   ports:
-    - protocol: TCP
-      port: 80
-      targetPort: 80
+  - protocol: TCP
+    port: 80
+    targetPort: 80
 ```
 
 ---
@@ -538,7 +553,7 @@ This project implements **security at every layer** of the pipeline:
 | **Quality** | SonarQube Quality Gate | Blocks deployments if quality thresholds are not met |
 | **Dependencies** | Trivy FS Scan | Scans `node_modules` and project files for known CVEs |
 | **Container** | Trivy Image Scan | Scans the final Docker image before deployment |
-| **Secrets** | Jenkins Credential Store | Zero hardcoded secrets in pipeline or application code |
+| **Secrets** | Jenkins Credential Store | Zero hardcoded secrets — TMDB API key, AWS keys, and Docker credentials are all stored in Jenkins Credentials |
 | **Access** | IAM Least Privilege | Dedicated IAM user with only EKS-required permissions |
 
 ---
